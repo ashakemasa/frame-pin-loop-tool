@@ -1,0 +1,1168 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101114">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Frame Pin">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Frame Pin Loop Tool</title>
+  <link rel="manifest" href="./frame-pin-loop-tool.webmanifest">
+  <link rel="icon" href="./frame-pin-icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./frame-pin-icon-192.png">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101114;
+      --panel: #181b20;
+      --panel-2: #20242b;
+      --line: #343a44;
+      --text: #f3f0e8;
+      --muted: #a7abb4;
+      --accent: #3fb7a3;
+      --accent-2: #e0b34f;
+      --danger: #df6b64;
+      --shadow: 0 18px 60px rgba(0, 0, 0, .34);
+      font-family: "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.035), transparent 220px),
+        var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button, input, select {
+      font: inherit;
+      color: inherit;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: #242932;
+      min-height: 38px;
+      border-radius: 8px;
+      padding: 0 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      transition: transform .12s ease, background .12s ease, border-color .12s ease;
+      white-space: nowrap;
+      touch-action: manipulation;
+    }
+
+    button:hover { background: #2c323c; border-color: #49515d; }
+    button:active { transform: translateY(1px); }
+    button.primary { background: #247d72; border-color: #349989; }
+    button.gold { background: #7b6123; border-color: #a9812f; }
+    button.danger { background: #582b2d; border-color: #8c4343; }
+    button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+    input[type="file"] { display: none; }
+    input[type="number"], select {
+      background: #111318;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      min-height: 38px;
+      padding: 0 10px;
+      outline: none;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+      min-height: 34px;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: calc(14px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right)) 14px calc(18px + env(safe-area-inset-left));
+      border-bottom: 1px solid var(--line);
+      background: rgba(16, 17, 20, .92);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(18px);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0;
+      font-weight: 700;
+    }
+
+    .header-actions, .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 380px;
+      gap: 16px;
+      padding: 16px;
+    }
+
+    .stage, .side {
+      min-width: 0;
+    }
+
+    .video-shell {
+      background: #07080a;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      min-height: 260px;
+      display: grid;
+      place-items: center;
+      position: relative;
+    }
+
+    video {
+      width: 100%;
+      max-height: calc(100vh - 260px);
+      min-height: 260px;
+      display: block;
+      background: #07080a;
+      object-fit: contain;
+    }
+
+    .main-loop {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      background: #07080a;
+      display: none;
+      object-fit: contain;
+      z-index: 2;
+    }
+
+    .video-shell.looping video {
+      visibility: hidden;
+    }
+
+    .video-shell.looping .main-loop {
+      display: block;
+    }
+
+    .loop-badge {
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      z-index: 3;
+      display: none;
+      min-height: 30px;
+      align-items: center;
+      padding: 0 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,.2);
+      background: rgba(8, 10, 12, .72);
+      color: var(--text);
+      font-size: 12px;
+      backdrop-filter: blur(10px);
+    }
+
+    .video-shell.looping .loop-badge {
+      display: inline-flex;
+    }
+
+    .empty {
+      padding: 60px 24px;
+      text-align: center;
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    .empty strong {
+      color: var(--text);
+      font-size: 19px;
+    }
+
+    .timeline-panel {
+      margin-top: 14px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .time-readout {
+      min-width: 142px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+
+    .timeline {
+      height: 48px;
+      position: relative;
+      margin-top: 10px;
+      border-radius: 8px;
+      background:
+        linear-gradient(90deg, rgba(63,183,163,.25) 0 var(--progress, 0%), transparent var(--progress, 0%)),
+        repeating-linear-gradient(90deg, #2b313a 0 1px, transparent 1px 10%),
+      #14171c;
+      border: 1px solid var(--line);
+      cursor: pointer;
+      touch-action: none;
+    }
+
+    .playhead {
+      position: absolute;
+      top: -5px;
+      bottom: -5px;
+      left: var(--progress, 0%);
+      width: 2px;
+      background: var(--accent);
+      box-shadow: 0 0 0 1px rgba(0,0,0,.4);
+      pointer-events: none;
+    }
+
+    .pin {
+      position: absolute;
+      top: 8px;
+      translate: -50% 0;
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      border: 2px solid #111318;
+      background: var(--accent-2);
+      color: #17120a;
+      font-size: 13px;
+      font-weight: 800;
+      display: grid;
+      place-items: center;
+      box-shadow: 0 4px 14px rgba(0,0,0,.4);
+      cursor: grab;
+      user-select: none;
+      z-index: calc(10 + var(--stack-index, 0));
+      touch-action: none;
+    }
+
+    .pin.selected {
+      background: #f1d57b;
+      outline: 3px solid rgba(224, 179, 79, .25);
+    }
+
+    .pin.stacked {
+      top: calc(8px + var(--stack-offset, 0px));
+      box-shadow:
+        -5px 5px 0 rgba(224, 179, 79, .24),
+        -10px 10px 0 rgba(224, 179, 79, .12),
+        0 4px 14px rgba(0,0,0,.4);
+    }
+
+    .pin.disabled {
+      opacity: .45;
+      filter: grayscale(1);
+    }
+
+    .tool-grid {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .side {
+      display: grid;
+      grid-template-rows: auto minmax(180px, 1fr) auto;
+      gap: 12px;
+      max-height: calc(100vh - 92px);
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-2);
+    }
+
+    .panel-head h2 {
+      margin: 0;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    .pin-list {
+      overflow: auto;
+      min-height: 160px;
+      max-height: 45vh;
+    }
+
+    .pin-item {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      cursor: pointer;
+    }
+
+    .pin-item.selected { background: rgba(224, 179, 79, .1); }
+    .pin-item.off { opacity: .5; }
+
+    .thumb {
+      width: 72px;
+      aspect-ratio: 16 / 9;
+      background: #090a0d;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      object-fit: cover;
+    }
+
+    .pin-meta {
+      min-width: 0;
+      line-height: 1.35;
+    }
+
+    .pin-meta b {
+      display: block;
+      font-size: 13px;
+    }
+
+    .pin-meta span {
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .tiny-actions {
+      display: flex;
+      gap: 5px;
+    }
+
+    .tiny-actions button {
+      min-width: 30px;
+      width: 30px;
+      height: 30px;
+      min-height: 30px;
+      padding: 0;
+      border-radius: 7px;
+    }
+
+    .preview-wrap {
+      padding: 12px;
+    }
+
+    canvas.preview {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      background: #07080a;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      display: block;
+      object-fit: contain;
+    }
+
+    .settings {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .settings label {
+      display: grid;
+      gap: 5px;
+    }
+
+    .footer-actions {
+      padding: 12px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+      padding: 0 12px 12px;
+    }
+
+    .export-gallery {
+      display: none;
+      border-top: 1px solid var(--line);
+      padding: 12px;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+      max-height: 280px;
+      overflow: auto;
+    }
+
+    .export-gallery.visible {
+      display: grid;
+    }
+
+    .export-frame {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      text-align: center;
+      min-width: 0;
+    }
+
+    .export-frame img {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      background: #07080a;
+      object-fit: contain;
+      -webkit-user-select: none;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 12px;
+      min-height: 18px;
+      padding-top: 8px;
+    }
+
+    @media (max-width: 980px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+      .side {
+        max-height: none;
+      }
+      .pin-list {
+        max-height: 360px;
+      }
+      video {
+        max-height: 56vh;
+      }
+    }
+
+    @media (max-width: 640px) {
+      header {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .header-actions button, .tool-grid button, .footer-actions button {
+        width: 100%;
+      }
+      .tool-grid, .footer-actions {
+        grid-template-columns: 1fr 1fr;
+      }
+      .row {
+        align-items: stretch;
+      }
+      .time-readout {
+        text-align: left;
+      }
+    }
+
+    @media (pointer: coarse) {
+      button {
+        min-height: 44px;
+      }
+      .tiny-actions button {
+        min-width: 38px;
+        width: 38px;
+        height: 38px;
+      }
+      .pin {
+        width: 34px;
+        height: 34px;
+        font-size: 14px;
+      }
+      .timeline {
+        height: 58px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Frame Pin Loop Tool</h1>
+      <div class="header-actions">
+        <label>
+          <input id="fileInput" type="file" accept="video/*">
+          <button type="button" id="openButton">動画を開く</button>
+        </label>
+        <button id="clearButton" class="danger" type="button">全ピン削除</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="stage">
+        <div class="video-shell">
+          <video id="video" controls playsinline hidden></video>
+          <canvas id="mainLoop" class="main-loop" width="512" height="512"></canvas>
+          <div id="loopBadge" class="loop-badge">ループ再生</div>
+          <div id="empty" class="empty">
+            <strong>動画を読み込むと、ここでフレームを探せます。</strong><br>
+            ピンを打つ、番号順に確認する、PNGとして保存するところまでこの画面で完結します。
+          </div>
+        </div>
+
+        <div class="timeline-panel">
+          <div class="row">
+            <button id="backFrame" type="button">-1F</button>
+            <button id="forwardFrame" type="button">+1F</button>
+            <button id="addPin" class="gold" type="button">現在位置にピン</button>
+            <button id="captureSelected" type="button">選択ピンを再抽出</button>
+            <div id="timeReadout" class="time-readout">00:00.000 / 00:00.000</div>
+          </div>
+          <input id="scrubber" type="range" min="0" max="1000" value="0" disabled>
+          <div id="timeline" class="timeline" aria-label="timeline">
+            <div class="playhead"></div>
+          </div>
+          <div class="tool-grid">
+            <button id="sortPins" type="button">時間順に並べる</button>
+            <button id="renumberPins" type="button">番号を整える</button>
+            <button id="toggleSelected" type="button">選択を使用/除外</button>
+            <button id="deleteSelected" class="danger" type="button">選択ピン削除</button>
+          </div>
+          <div id="status" class="status"></div>
+        </div>
+      </section>
+
+      <aside class="side">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>ピンと抽出フレーム</h2>
+            <span id="pinCount" class="time-readout">0 frames</span>
+          </div>
+          <div id="pinList" class="pin-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>番号順ループ</h2>
+            <button id="playLoop" class="primary" type="button">再生</button>
+          </div>
+          <div class="preview-wrap">
+            <canvas id="preview" class="preview" width="512" height="512"></canvas>
+            <div class="settings">
+              <label>FPS
+                <input id="fps" type="number" min="1" max="60" value="12">
+              </label>
+              <label>出力サイズ
+                <select id="exportSize">
+                  <option value="source">元サイズ</option>
+                  <option value="1024">1024px内</option>
+                  <option value="768">768px内</option>
+                  <option value="512" selected>512px内</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="footer-actions">
+            <button id="downloadSelected" type="button">選択PNG保存</button>
+            <button id="downloadAll" class="primary" type="button">使用フレーム保存</button>
+            <button id="showGallery" type="button">保存用ギャラリー</button>
+          </div>
+          <div id="exportGallery" class="export-gallery" aria-label="保存用ギャラリー"></div>
+          <div class="hint">iPadでは保存用ギャラリーを開き、画像を長押しして保存する方法が安定します。PCではPNG保存ボタンが使えます。</div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <script>
+    const els = {
+      fileInput: document.getElementById('fileInput'),
+      openButton: document.getElementById('openButton'),
+      video: document.getElementById('video'),
+      videoShell: document.querySelector('.video-shell'),
+      mainLoop: document.getElementById('mainLoop'),
+      loopBadge: document.getElementById('loopBadge'),
+      empty: document.getElementById('empty'),
+      clearButton: document.getElementById('clearButton'),
+      backFrame: document.getElementById('backFrame'),
+      forwardFrame: document.getElementById('forwardFrame'),
+      addPin: document.getElementById('addPin'),
+      captureSelected: document.getElementById('captureSelected'),
+      timeReadout: document.getElementById('timeReadout'),
+      scrubber: document.getElementById('scrubber'),
+      timeline: document.getElementById('timeline'),
+      sortPins: document.getElementById('sortPins'),
+      renumberPins: document.getElementById('renumberPins'),
+      toggleSelected: document.getElementById('toggleSelected'),
+      deleteSelected: document.getElementById('deleteSelected'),
+      status: document.getElementById('status'),
+      pinCount: document.getElementById('pinCount'),
+      pinList: document.getElementById('pinList'),
+      preview: document.getElementById('preview'),
+      playLoop: document.getElementById('playLoop'),
+      fps: document.getElementById('fps'),
+      exportSize: document.getElementById('exportSize'),
+      downloadSelected: document.getElementById('downloadSelected'),
+      downloadAll: document.getElementById('downloadAll'),
+      showGallery: document.getElementById('showGallery'),
+      exportGallery: document.getElementById('exportGallery')
+    };
+
+    const state = {
+      pins: [],
+      selectedId: null,
+      draggingId: null,
+      loopTimer: null,
+      loopIndex: 0,
+      fileStem: 'frames',
+      objectUrl: null,
+      assumedFps: 24
+    };
+
+    const captureCanvas = document.createElement('canvas');
+    const captureCtx = captureCanvas.getContext('2d', { willReadFrequently: true });
+    const previewCtx = els.preview.getContext('2d');
+    const mainLoopCtx = els.mainLoop.getContext('2d');
+
+    function setStatus(message) {
+      els.status.textContent = message || '';
+    }
+
+    function fmt(time) {
+      if (!Number.isFinite(time)) return '00:00.000';
+      const minutes = Math.floor(time / 60);
+      const seconds = Math.floor(time % 60);
+      const millis = Math.floor((time % 1) * 1000);
+      return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
+    }
+
+    function duration() {
+      return Number.isFinite(els.video.duration) ? els.video.duration : 0;
+    }
+
+    function currentPercent() {
+      const d = duration();
+      return d ? Math.max(0, Math.min(100, els.video.currentTime / d * 100)) : 0;
+    }
+
+    function updateTimeUi() {
+      const d = duration();
+      els.timeReadout.textContent = `${fmt(els.video.currentTime)} / ${fmt(d)}`;
+      els.scrubber.value = d ? String(Math.round(els.video.currentTime / d * 1000)) : '0';
+      els.timeline.style.setProperty('--progress', `${currentPercent()}%`);
+    }
+
+    function seekTo(time) {
+      const d = duration();
+      if (!d) return;
+      els.video.currentTime = Math.max(0, Math.min(d, time));
+    }
+
+    function once(target, event) {
+      return new Promise(resolve => target.addEventListener(event, resolve, { once: true }));
+    }
+
+    async function seekAndWait(time) {
+      seekTo(time);
+      await once(els.video, 'seeked');
+      updateTimeUi();
+    }
+
+    function outputSize() {
+      const vw = els.video.videoWidth || 512;
+      const vh = els.video.videoHeight || 512;
+      const setting = els.exportSize.value;
+      if (setting === 'source') return { width: vw, height: vh };
+      const max = Number(setting);
+      const scale = Math.min(max / vw, max / vh, 1);
+      return { width: Math.round(vw * scale), height: Math.round(vh * scale) };
+    }
+
+    function drawContain(ctx, source, width, height) {
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = '#07080a';
+      ctx.fillRect(0, 0, width, height);
+      const sw = source.videoWidth || source.naturalWidth || source.width;
+      const sh = source.videoHeight || source.naturalHeight || source.height;
+      if (!sw || !sh) return;
+      const scale = Math.min(width / sw, height / sh);
+      const dw = sw * scale;
+      const dh = sh * scale;
+      ctx.drawImage(source, (width - dw) / 2, (height - dh) / 2, dw, dh);
+    }
+
+    function resizeMainLoopCanvas() {
+      const rect = els.videoShell.getBoundingClientRect();
+      const width = Math.max(320, Math.round(rect.width));
+      const height = Math.max(240, Math.round(rect.height));
+      if (els.mainLoop.width !== width || els.mainLoop.height !== height) {
+        els.mainLoop.width = width;
+        els.mainLoop.height = height;
+      }
+    }
+
+    function drawLoopFrame(pin) {
+      if (!pin || !pin.dataUrl) return;
+      const img = new Image();
+      img.onload = () => {
+        resizeMainLoopCanvas();
+        drawContain(mainLoopCtx, img, els.mainLoop.width, els.mainLoop.height);
+        drawContain(previewCtx, img, els.preview.width, els.preview.height);
+      };
+      img.src = pin.dataUrl;
+      els.loopBadge.textContent = `ループ再生 ${String(pin.number).padStart(2, '0')} / ${fmt(pin.time)}`;
+    }
+
+    function captureFrameDataUrl() {
+      const { width, height } = outputSize();
+      captureCanvas.width = width;
+      captureCanvas.height = height;
+      captureCtx.drawImage(els.video, 0, 0, width, height);
+      return captureCanvas.toDataURL('image/png');
+    }
+
+    function makePin(time) {
+      return {
+        id: crypto.randomUUID(),
+        number: state.pins.length + 1,
+        time,
+        enabled: true,
+        dataUrl: captureFrameDataUrl()
+      };
+    }
+
+    function orderedPins() {
+      return [...state.pins].sort((a, b) => a.number - b.number);
+    }
+
+    function enabledPins() {
+      return orderedPins().filter(pin => pin.enabled && pin.dataUrl);
+    }
+
+    function selectedPin() {
+      return state.pins.find(pin => pin.id === state.selectedId) || null;
+    }
+
+    function selectPin(id, shouldSeek = true) {
+      state.selectedId = id;
+      const pin = selectedPin();
+      if (pin && shouldSeek) seekTo(pin.time);
+      render();
+    }
+
+    function renderTimelinePins() {
+      els.timeline.querySelectorAll('.pin').forEach(node => node.remove());
+      const d = duration();
+      const sortedByNumber = orderedPins();
+      const stackKeys = new Map();
+      sortedByNumber.forEach(pin => {
+        const key = d ? Math.round(pin.time * 1000) : 0;
+        const group = stackKeys.get(key) || [];
+        group.push(pin.id);
+        stackKeys.set(key, group);
+      });
+
+      state.pins.forEach(pin => {
+        const key = d ? Math.round(pin.time * 1000) : 0;
+        const group = stackKeys.get(key) || [];
+        const stackIndex = Math.max(0, group.indexOf(pin.id));
+        const marker = document.createElement('button');
+        marker.type = 'button';
+        marker.className = `pin${stackIndex ? ' stacked' : ''}${pin.id === state.selectedId ? ' selected' : ''}${pin.enabled ? '' : ' disabled'}`;
+        const percent = d ? pin.time / d * 100 : 0;
+        marker.style.left = `calc(${percent}% + ${Math.min(stackIndex, 5) * 10}px)`;
+        marker.style.setProperty('--stack-index', String(stackIndex));
+        marker.style.setProperty('--stack-offset', `${Math.min(stackIndex, 5) * 4}px`);
+        marker.textContent = pin.number;
+        marker.title = group.length > 1
+          ? `${pin.number}: ${fmt(pin.time)} 同一フレーム ${stackIndex + 1}/${group.length}`
+          : `${pin.number}: ${fmt(pin.time)}`;
+        marker.addEventListener('click', event => {
+          event.stopPropagation();
+          selectPin(pin.id);
+        });
+        marker.addEventListener('pointerdown', event => {
+          event.preventDefault();
+          state.draggingId = pin.id;
+          selectPin(pin.id, false);
+        });
+        els.timeline.appendChild(marker);
+      });
+    }
+
+    function renderList() {
+      els.pinList.innerHTML = '';
+      const pins = orderedPins();
+      els.pinCount.textContent = `${enabledPins().length} / ${pins.length} frames`;
+      if (!pins.length) {
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = 'ピンはまだありません。';
+        els.pinList.appendChild(empty);
+        return;
+      }
+
+      pins.forEach(pin => {
+        const item = document.createElement('div');
+        item.className = `pin-item${pin.id === state.selectedId ? ' selected' : ''}${pin.enabled ? '' : ' off'}`;
+        item.addEventListener('click', () => selectPin(pin.id));
+
+        const img = document.createElement('img');
+        img.className = 'thumb';
+        img.alt = `frame ${pin.number}`;
+        img.src = pin.dataUrl;
+
+        const meta = document.createElement('div');
+        meta.className = 'pin-meta';
+        meta.innerHTML = `<b>${String(pin.number).padStart(2, '0')}</b><span>${fmt(pin.time)}</span>`;
+
+        const actions = document.createElement('div');
+        actions.className = 'tiny-actions';
+
+        const up = document.createElement('button');
+        up.type = 'button';
+        up.textContent = '↑';
+        up.title = '前へ';
+        up.addEventListener('click', event => {
+          event.stopPropagation();
+          swapNumber(pin, -1);
+        });
+
+        const down = document.createElement('button');
+        down.type = 'button';
+        down.textContent = '↓';
+        down.title = '後ろへ';
+        down.addEventListener('click', event => {
+          event.stopPropagation();
+          swapNumber(pin, 1);
+        });
+
+        actions.append(up, down);
+        item.append(img, meta, actions);
+        els.pinList.appendChild(item);
+      });
+    }
+
+    function renderPreviewStill() {
+      const pin = selectedPin() || enabledPins()[0];
+      previewCtx.clearRect(0, 0, els.preview.width, els.preview.height);
+      previewCtx.fillStyle = '#07080a';
+      previewCtx.fillRect(0, 0, els.preview.width, els.preview.height);
+      if (!pin || !pin.dataUrl) return;
+      const img = new Image();
+      img.onload = () => drawContain(previewCtx, img, els.preview.width, els.preview.height);
+      img.src = pin.dataUrl;
+    }
+
+    function render() {
+      updateTimeUi();
+      renderTimelinePins();
+      renderList();
+      if (!state.loopTimer) renderPreviewStill();
+      const hasVideo = !!els.video.src;
+      const hasPins = state.pins.length > 0;
+      els.scrubber.disabled = !hasVideo;
+      els.addPin.disabled = !hasVideo;
+      els.captureSelected.disabled = !hasVideo || !selectedPin();
+      els.deleteSelected.disabled = !selectedPin();
+      els.toggleSelected.disabled = !selectedPin();
+      els.downloadSelected.disabled = !selectedPin();
+      els.downloadAll.disabled = !enabledPins().length;
+      els.showGallery.disabled = !enabledPins().length;
+      els.playLoop.disabled = !enabledPins().length;
+    }
+
+    function swapNumber(pin, direction) {
+      const pins = orderedPins();
+      const index = pins.findIndex(candidate => candidate.id === pin.id);
+      const other = pins[index + direction];
+      if (!other) return;
+      const temp = pin.number;
+      pin.number = other.number;
+      other.number = temp;
+      render();
+    }
+
+    function renumber() {
+      orderedPins().forEach((pin, index) => { pin.number = index + 1; });
+    }
+
+    async function addPinAtCurrentTime() {
+      if (!duration()) return;
+      const pin = makePin(els.video.currentTime);
+      state.pins.push(pin);
+      state.selectedId = pin.id;
+      setStatus(`ピン ${pin.number} を追加しました。`);
+      render();
+    }
+
+    function downloadDataUrl(dataUrl, filename) {
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+
+    function downloadPins(pins) {
+      pins.forEach((pin, index) => {
+        setTimeout(() => {
+          const name = `${state.fileStem}_${String(index + 1).padStart(3, '0')}_pin${String(pin.number).padStart(2, '0')}.png`;
+          downloadDataUrl(pin.dataUrl, name);
+        }, index * 180);
+      });
+      setStatus(`${pins.length} 枚を書き出しました。`);
+    }
+
+    function showExportGallery(pins) {
+      els.exportGallery.innerHTML = '';
+      if (!pins.length) {
+        els.exportGallery.classList.remove('visible');
+        return;
+      }
+
+      pins.forEach((pin, index) => {
+        const item = document.createElement('div');
+        item.className = 'export-frame';
+
+        const img = document.createElement('img');
+        img.src = pin.dataUrl;
+        img.alt = `frame ${pin.number}`;
+
+        const label = document.createElement('span');
+        label.textContent = `${String(index + 1).padStart(2, '0')} / pin ${pin.number}`;
+
+        item.append(img, label);
+        els.exportGallery.appendChild(item);
+      });
+
+      els.exportGallery.classList.add('visible');
+      setStatus('保存用ギャラリーを作りました。iPadでは画像を長押しして保存できます。');
+    }
+
+    function stopLoop() {
+      if (state.loopTimer) clearInterval(state.loopTimer);
+      state.loopTimer = null;
+      els.videoShell.classList.remove('looping');
+      els.playLoop.textContent = '再生';
+      renderPreviewStill();
+    }
+
+    function startLoop() {
+      const frames = enabledPins();
+      if (!frames.length) return;
+      els.video.pause();
+      resizeMainLoopCanvas();
+      els.videoShell.classList.add('looping');
+      state.loopIndex = 0;
+      els.playLoop.textContent = '停止';
+      const draw = () => {
+        const pin = frames[state.loopIndex % frames.length];
+        drawLoopFrame(pin);
+        state.loopIndex += 1;
+      };
+      draw();
+      const fps = Math.max(1, Math.min(60, Number(els.fps.value) || 12));
+      state.loopTimer = setInterval(draw, 1000 / fps);
+    }
+
+    els.openButton.addEventListener('click', () => els.fileInput.click());
+    els.fileInput.addEventListener('change', () => {
+      const file = els.fileInput.files[0];
+      if (!file) return;
+      if (state.objectUrl) URL.revokeObjectURL(state.objectUrl);
+      state.objectUrl = URL.createObjectURL(file);
+      state.fileStem = file.name.replace(/\.[^.]+$/, '') || 'frames';
+      state.pins = [];
+      state.selectedId = null;
+      stopLoop();
+      els.video.src = state.objectUrl;
+      els.video.hidden = false;
+      els.empty.hidden = true;
+      els.video.addEventListener('loadedmetadata', () => {
+        els.scrubber.disabled = false;
+        updateTimeUi();
+        render();
+        setStatus('動画を読み込みました。良いフレームでピンを打てます。');
+      }, { once: true });
+    });
+
+    els.video.addEventListener('timeupdate', updateTimeUi);
+    els.video.addEventListener('seeked', updateTimeUi);
+    els.video.addEventListener('loadeddata', render);
+
+    els.scrubber.addEventListener('input', () => {
+      const d = duration();
+      if (!d) return;
+      seekTo(Number(els.scrubber.value) / 1000 * d);
+    });
+
+    els.timeline.addEventListener('click', event => {
+      if (state.draggingId) return;
+      if (!duration()) return;
+      const rect = els.timeline.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+      seekTo(ratio * duration());
+    });
+
+    document.addEventListener('pointermove', event => {
+      if (!state.draggingId || !duration()) return;
+      const pin = state.pins.find(candidate => candidate.id === state.draggingId);
+      if (!pin) return;
+      const rect = els.timeline.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+      pin.time = ratio * duration();
+      seekTo(pin.time);
+      render();
+    });
+
+    document.addEventListener('pointerup', async () => {
+      if (!state.draggingId) return;
+      const pin = state.pins.find(candidate => candidate.id === state.draggingId);
+      state.draggingId = null;
+      if (!pin) return;
+      await seekAndWait(pin.time);
+      pin.dataUrl = captureFrameDataUrl();
+      render();
+    });
+
+    els.backFrame.addEventListener('click', () => seekTo(els.video.currentTime - 1 / state.assumedFps));
+    els.forwardFrame.addEventListener('click', () => seekTo(els.video.currentTime + 1 / state.assumedFps));
+    els.addPin.addEventListener('click', addPinAtCurrentTime);
+
+    els.captureSelected.addEventListener('click', async () => {
+      const pin = selectedPin();
+      if (!pin) return;
+      await seekAndWait(pin.time);
+      pin.dataUrl = captureFrameDataUrl();
+      setStatus(`ピン ${pin.number} を再抽出しました。`);
+      render();
+    });
+
+    els.sortPins.addEventListener('click', () => {
+      [...state.pins].sort((a, b) => a.time - b.time).forEach((pin, index) => { pin.number = index + 1; });
+      setStatus('時間順に並べました。');
+      render();
+    });
+
+    els.renumberPins.addEventListener('click', () => {
+      renumber();
+      setStatus('番号を整えました。');
+      render();
+    });
+
+    els.toggleSelected.addEventListener('click', () => {
+      const pin = selectedPin();
+      if (!pin) return;
+      pin.enabled = !pin.enabled;
+      setStatus(pin.enabled ? `ピン ${pin.number} を使用します。` : `ピン ${pin.number} を除外しました。`);
+      render();
+    });
+
+    els.deleteSelected.addEventListener('click', () => {
+      const pin = selectedPin();
+      if (!pin) return;
+      state.pins = state.pins.filter(candidate => candidate.id !== pin.id);
+      state.selectedId = state.pins[0]?.id || null;
+      renumber();
+      showExportGallery(enabledPins());
+      setStatus('選択ピンを削除しました。');
+      render();
+    });
+
+    els.clearButton.addEventListener('click', () => {
+      state.pins = [];
+      state.selectedId = null;
+      els.exportGallery.innerHTML = '';
+      els.exportGallery.classList.remove('visible');
+      stopLoop();
+      setStatus('すべてのピンを削除しました。');
+      render();
+    });
+
+    els.playLoop.addEventListener('click', () => {
+      if (state.loopTimer) {
+        stopLoop();
+      } else {
+        startLoop();
+      }
+    });
+
+    els.fps.addEventListener('change', () => {
+      if (state.loopTimer) {
+        stopLoop();
+        startLoop();
+      }
+    });
+
+    els.exportSize.addEventListener('change', () => {
+      setStatus('出力サイズを変えました。既存ピンは必要に応じて再抽出してください。');
+    });
+
+    els.downloadSelected.addEventListener('click', () => {
+      const pin = selectedPin();
+      if (pin) downloadPins([pin]);
+    });
+
+    els.downloadAll.addEventListener('click', () => downloadPins(enabledPins()));
+
+    els.showGallery.addEventListener('click', () => showExportGallery(enabledPins()));
+
+    document.addEventListener('keydown', event => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        seekTo(els.video.currentTime - 1 / state.assumedFps);
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        seekTo(els.video.currentTime + 1 / state.assumedFps);
+      }
+      if (event.key.toLowerCase() === 'p') addPinAtCurrentTime();
+      if (event.key === ' ') {
+        event.preventDefault();
+        els.video.paused ? els.video.play() : els.video.pause();
+      }
+    });
+
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./frame-pin-loop-sw.js').catch(() => {});
+      });
+    }
+
+    render();
+  </script>
+</body>
+</html>
