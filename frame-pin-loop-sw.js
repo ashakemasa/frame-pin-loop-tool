@@ -1,10 +1,12 @@
-const CACHE_NAME = 'frame-pin-loop-tool-v1';
+const CACHE_NAME = 'frame-pin-loop-tool-v2';
 const APP_ASSETS = [
   './',
   './index.html',
   './frame-pin-loop-tool.html',
   './frame-pin-loop-tool.webmanifest',
-  './frame-pin-icon.svg'
+  './frame-pin-icon.svg',
+  './frame-pin-icon-192.png',
+  './frame-pin-icon-512.png'
 ];
 
 self.addEventListener('install', event => {

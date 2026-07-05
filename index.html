@@ -404,6 +404,23 @@
       gap: 5px;
     }
 
+    .size-options {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .size-option {
+      min-height: 34px;
+      padding: 0 8px;
+      font-size: 12px;
+    }
+
+    .size-option.active {
+      background: #247d72;
+      border-color: #349989;
+    }
+
     .footer-actions {
       padding: 12px;
       display: grid;
@@ -580,12 +597,12 @@
                 <input id="fps" type="number" min="1" max="60" value="12">
               </label>
               <label>出力サイズ
-                <select id="exportSize">
-                  <option value="source">元サイズ</option>
-                  <option value="1024">1024px内</option>
-                  <option value="768">768px内</option>
-                  <option value="512" selected>512px内</option>
-                </select>
+                <div id="sizeOptions" class="size-options" role="group" aria-label="出力サイズ">
+                  <button class="size-option" type="button" data-size="source">元</button>
+                  <button class="size-option" type="button" data-size="1024">1024</button>
+                  <button class="size-option" type="button" data-size="768">768</button>
+                  <button class="size-option active" type="button" data-size="512">512</button>
+                </div>
               </label>
             </div>
           </div>
@@ -594,7 +611,7 @@
         <section class="panel">
           <div class="footer-actions">
             <button id="downloadSelected" type="button">選択PNG保存</button>
-            <button id="downloadAll" class="primary" type="button">使用フレーム保存</button>
+            <button id="downloadAll" class="primary" type="button">全フレームZIP保存</button>
             <button id="showGallery" type="button">保存用ギャラリー</button>
           </div>
           <div id="exportGallery" class="export-gallery" aria-label="保存用ギャラリー"></div>
@@ -631,7 +648,7 @@
       preview: document.getElementById('preview'),
       playLoop: document.getElementById('playLoop'),
       fps: document.getElementById('fps'),
-      exportSize: document.getElementById('exportSize'),
+      sizeOptions: document.getElementById('sizeOptions'),
       downloadSelected: document.getElementById('downloadSelected'),
       downloadAll: document.getElementById('downloadAll'),
       showGallery: document.getElementById('showGallery'),
@@ -646,7 +663,8 @@
       loopIndex: 0,
       fileStem: 'frames',
       objectUrl: null,
-      assumedFps: 24
+      assumedFps: 24,
+      exportSize: '512'
     };
 
     const captureCanvas = document.createElement('canvas');
@@ -701,7 +719,7 @@
     function outputSize() {
       const vw = els.video.videoWidth || 512;
       const vh = els.video.videoHeight || 512;
-      const setting = els.exportSize.value;
+      const setting = state.exportSize;
       if (setting === 'source') return { width: vw, height: vh };
       const max = Number(setting);
       const scale = Math.min(max / vw, max / vh, 1);
@@ -935,6 +953,118 @@
       link.remove();
     }
 
+    function dataUrlToBytes(dataUrl) {
+      const base64 = dataUrl.split(',')[1] || '';
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
+      }
+      return bytes;
+    }
+
+    const crcTable = (() => {
+      const table = new Uint32Array(256);
+      for (let n = 0; n < 256; n += 1) {
+        let c = n;
+        for (let k = 0; k < 8; k += 1) {
+          c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+        }
+        table[n] = c >>> 0;
+      }
+      return table;
+    })();
+
+    function crc32(bytes) {
+      let crc = 0xffffffff;
+      for (const byte of bytes) {
+        crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+      }
+      return (crc ^ 0xffffffff) >>> 0;
+    }
+
+    function dosDateTime(date = new Date()) {
+      const time = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+      const dosDate = ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+      return { time, date: dosDate };
+    }
+
+    function writeUint16(bytes, offset, value) {
+      bytes[offset] = value & 0xff;
+      bytes[offset + 1] = (value >>> 8) & 0xff;
+    }
+
+    function writeUint32(bytes, offset, value) {
+      bytes[offset] = value & 0xff;
+      bytes[offset + 1] = (value >>> 8) & 0xff;
+      bytes[offset + 2] = (value >>> 16) & 0xff;
+      bytes[offset + 3] = (value >>> 24) & 0xff;
+    }
+
+    function makeZip(files) {
+      const encoder = new TextEncoder();
+      const now = dosDateTime();
+      const localParts = [];
+      const centralParts = [];
+      let offset = 0;
+
+      files.forEach(file => {
+        const nameBytes = encoder.encode(file.name);
+        const data = file.bytes;
+        const crc = crc32(data);
+
+        const local = new Uint8Array(30 + nameBytes.length + data.length);
+        writeUint32(local, 0, 0x04034b50);
+        writeUint16(local, 4, 20);
+        writeUint16(local, 6, 0);
+        writeUint16(local, 8, 0);
+        writeUint16(local, 10, now.time);
+        writeUint16(local, 12, now.date);
+        writeUint32(local, 14, crc);
+        writeUint32(local, 18, data.length);
+        writeUint32(local, 22, data.length);
+        writeUint16(local, 26, nameBytes.length);
+        writeUint16(local, 28, 0);
+        local.set(nameBytes, 30);
+        local.set(data, 30 + nameBytes.length);
+        localParts.push(local);
+
+        const central = new Uint8Array(46 + nameBytes.length);
+        writeUint32(central, 0, 0x02014b50);
+        writeUint16(central, 4, 20);
+        writeUint16(central, 6, 20);
+        writeUint16(central, 8, 0);
+        writeUint16(central, 10, 0);
+        writeUint16(central, 12, now.time);
+        writeUint16(central, 14, now.date);
+        writeUint32(central, 16, crc);
+        writeUint32(central, 20, data.length);
+        writeUint32(central, 24, data.length);
+        writeUint16(central, 28, nameBytes.length);
+        writeUint16(central, 30, 0);
+        writeUint16(central, 32, 0);
+        writeUint16(central, 34, 0);
+        writeUint16(central, 36, 0);
+        writeUint32(central, 38, 0);
+        writeUint32(central, 42, offset);
+        central.set(nameBytes, 46);
+        centralParts.push(central);
+
+        offset += local.length;
+      });
+
+      const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+      const end = new Uint8Array(22);
+      writeUint32(end, 0, 0x06054b50);
+      writeUint16(end, 8, files.length);
+      writeUint16(end, 10, files.length);
+      writeUint32(end, 12, centralSize);
+      writeUint32(end, 16, offset);
+      writeUint16(end, 20, 0);
+
+      return new Blob([...localParts, ...centralParts, end], { type: 'application/zip' });
+    }
+
     function downloadPins(pins) {
       pins.forEach((pin, index) => {
         setTimeout(() => {
@@ -943,6 +1073,24 @@
         }, index * 180);
       });
       setStatus(`${pins.length} 枚を書き出しました。`);
+    }
+
+    function downloadPinsZip(pins) {
+      if (!pins.length) return;
+      const files = pins.map((pin, index) => ({
+        name: `${state.fileStem}_${String(index + 1).padStart(3, '0')}_pin${String(pin.number).padStart(2, '0')}.png`,
+        bytes: dataUrlToBytes(pin.dataUrl)
+      }));
+      const zip = makeZip(files);
+      const url = URL.createObjectURL(zip);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${state.fileStem}_frames.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      setStatus(`${pins.length} 枚をZIPにまとめました。`);
     }
 
     function showExportGallery(pins) {
@@ -1126,7 +1274,13 @@
       }
     });
 
-    els.exportSize.addEventListener('change', () => {
+    els.sizeOptions.addEventListener('click', event => {
+      const button = event.target.closest('[data-size]');
+      if (!button) return;
+      state.exportSize = button.dataset.size;
+      els.sizeOptions.querySelectorAll('.size-option').forEach(option => {
+        option.classList.toggle('active', option === button);
+      });
       setStatus('出力サイズを変えました。既存ピンは必要に応じて再抽出してください。');
     });
 
@@ -1135,7 +1289,7 @@
       if (pin) downloadPins([pin]);
     });
 
-    els.downloadAll.addEventListener('click', () => downloadPins(enabledPins()));
+    els.downloadAll.addEventListener('click', () => downloadPinsZip(enabledPins()));
 
     els.showGallery.addEventListener('click', () => showExportGallery(enabledPins()));
 
